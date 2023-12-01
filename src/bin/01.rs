@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 pub fn part_one(input: &str) -> Option<u32> {
     input
-        .split("\n")
+        .lines()
         // Map over each line, and filter our only the digits
         .map(|line| line.chars().filter(|c| c.is_digit(10)))
         // Map and keep only first and last digit. If there's only one digit, set last to first
@@ -24,8 +24,8 @@ pub fn part_one(input: &str) -> Option<u32> {
 pub fn part_two(input: &str) -> Option<u32> {
     part_one(
         input
-            .split("\n")
-            .map(|line| replace_digit_words_in_string(line))
+            .lines()
+            .map(replace_digit_words_in_string)
             .collect::<Vec<String>>()
             .join("\n")
             .as_str(),
