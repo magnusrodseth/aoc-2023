@@ -33,7 +33,7 @@ pub fn part_two(input: &str) -> Option<u32> {
 }
 
 fn replace_digit_words_in_string(s: &str) -> String {
-    let letter_words: HashMap<&str, char> = [
+    let digit_words: HashMap<&str, char> = [
         ("one", '1'),
         ("two", '2'),
         ("three", '3'),
@@ -48,17 +48,24 @@ fn replace_digit_words_in_string(s: &str) -> String {
     .cloned()
     .collect();
 
-    let mut occurrences = Vec::new();
+    // Store pairs of indices and characters.
+    // The index indicates where in the original string a digit or digit word was found,
+    // and the character represents the numeric digit corresponding to that digit or digit word.
+    let mut occurrences: Vec<(usize, char)> = Vec::new();
 
     // Find all occurrences of digit words and digits
-    for (word, digit) in &letter_words {
+    for (word, digit) in &digit_words {
+        // Find all occurrences of the word in the input string s.
         occurrences.extend(s.match_indices(word).map(|(index, _)| (index, *digit)));
     }
+
     for digit in '0'..='9' {
+        // Find all occurrences of the digit in the input string
         occurrences.extend(s.match_indices(digit).map(|(index, _)| (index, digit)));
     }
 
-    // Sort by index
+    // This sorting ensures that the characters in the final output string are in the same order as
+    // they appeared in the original string
     occurrences.sort_by_key(|&(index, _)| index);
 
     // Join digits into a string
