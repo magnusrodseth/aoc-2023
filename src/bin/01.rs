@@ -1,57 +1,24 @@
 use std::collections::HashMap;
 
 pub fn part_one(input: &str) -> Option<u32> {
-    let mut result: u32 = 0;
-
-    let lines: Vec<&str> = input.split('\n').map(|line| line.trim()).collect();
-
-    for line in lines {
-        let mut start_index = 0;
-        let mut end_index = line.len() - 1;
-        let mut final_start_digit: Option<u32> = None;
-        let mut final_end_digit: Option<u32> = None;
-
-        for _ in 0..line.len() {
-            let start_character = line.chars().nth(start_index).unwrap();
-            let end_character = line.chars().nth(end_index).unwrap();
-
-            // Parse start character to u32
-            match start_character.to_digit(10) {
-                Some(start_digit) => {
-                    final_start_digit = Some(start_digit);
-                }
-                None => {
-                    // Start character is not a digit
-                    start_index += 1;
-                }
-            }
-
-            match end_character.to_digit(10) {
-                Some(end_digit) => {
-                    final_end_digit = Some(end_digit);
-                }
-                None => {
-                    // End character is not a digit
-                    end_index -= 1;
-                }
-            }
-        }
-
-        // Merge the final digits, and parse them to u32
-        let number = match (final_start_digit, final_end_digit) {
-            (Some(start_digit), Some(end_digit)) => format!("{}{}", start_digit, end_digit)
-                .parse::<u32>()
-                .expect("Could not parse start and end digit"),
-            _ => {
-                panic!("Could not parse start and end digit")
-            }
-        };
-
-        // Add the number to the result
-        result += number;
-    }
-
-    Some(result)
+    input
+        .split("\n")
+        // Map over each line, and filter our only the digits
+        .map(|line| line.chars().filter(|c| c.is_digit(10)))
+        // Map and keep only first and last digit. If there's only one digit, set last to first
+        .map(|mut digits| {
+            let first = digits.next();
+            let last = digits.last().or(first);
+            (first, last)
+        })
+        // Merge first and last into a string, and parse to u32
+        .map(|(first, last)| {
+            first
+                .and_then(|first| last.map(|last| format!("{}{}", first, last)))
+                .and_then(|digits| digits.parse::<u32>().ok())
+        })
+        // Sum all the numbers
+        .sum::<Option<u32>>()
 }
 
 pub fn part_two(input: &str) -> Option<u32> {
