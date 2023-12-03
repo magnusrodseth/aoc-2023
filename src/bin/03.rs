@@ -1,159 +1,98 @@
-use std::{collections::HashSet, fmt::Display};
+use std::collections::HashMap;
 
-#[derive(Debug)]
-enum CellValue {
-    Symbol(char),
-    Number(u32),
-    Period,
+struct Part {
+    symbol: char,
+    position: String,
+    value: u32,
 }
 
-#[derive(Debug)]
-struct Cell {
-    value: CellValue,
-    row: usize,
-    col: usize,
-}
+fn parse_part_numbers(lines: &[&str]) -> Vec<Part> {
+    let mut parts = Vec::new();
 
-impl Display for CellValue {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CellValue::Symbol(c) => write!(f, "{}", c),
-            CellValue::Number(n) => write!(f, "{}", n),
-            CellValue::Period => write!(f, "."),
-        }
-    }
-}
+    for (row, line) in lines.iter().enumerate() {
+        let mut part_number = String::new();
+        let mut part: Option<Part> = None;
 
-impl Cell {
-    fn is_symbol(&self) -> bool {
-        match self.value {
-            CellValue::Symbol(_) => true,
-            _ => false,
-        }
-    }
+        for (col, char) in line.chars().enumerate() {
+            if char.is_digit(10) {
+                part_number.push(char);
+                if let Some(parsed) = parse_part(lines, col, row) {
+                    part = Some(parsed);
+                }
+            }
 
-    fn is_number(&self) -> bool {
-        match self.value {
-            CellValue::Number(_) => true,
-            _ => false,
+            let next_char = line.chars().nth(col + 1);
+
+            if next_char.map_or(true, |c| !c.is_digit(10)) {
+                if let Some(p) = part.take() {
+                    parts.push(Part {
+                        value: part_number.parse().unwrap_or(0),
+                        ..p
+                    });
+                }
+                part_number.clear();
+            }
         }
     }
 
-    fn is_period(&self) -> bool {
-        match self.value {
-            CellValue::Period => true,
-            _ => false,
-        }
-    }
+    parts
 }
 
-pub fn part_one(input: &str) -> Option<u32> {
-    let mut part_numbers: HashSet<u32> = HashSet::new();
+fn parse_part(lines: &[&str], col: usize, row: usize) -> Option<Part> {
+    let directions: Vec<(isize, isize)> = (-1..=1)
+        .flat_map(|dx| (-1..=1).map(move |dy| (dx, dy)))
+        .filter(|&(dx, dy)| dx != 0 || dy != 0)
+        .collect();
 
-    let grid = input
-        .lines()
-        .map(|line| line.chars().collect::<Vec<char>>())
-        .enumerate()
-        .map(|(row, line)| {
-            line.iter()
-                .enumerate()
-                .map(|(col, c)| Cell {
-                    value: match c {
-                        '.' => CellValue::Period,
-                        '0'..='9' => CellValue::Number(c.to_digit(10).expect("Invalid digit")),
-                        _ => CellValue::Symbol(*c),
-                    },
-                    row,
-                    col,
-                })
-                .collect::<Vec<Cell>>()
-        })
-        .collect::<Vec<Vec<Cell>>>();
-
-    let rows = grid.len();
-    let cols = grid[0].len();
-
-    for row in 0..rows {
-        for col in 0..cols {
-            let cell = &grid[row][col];
-
-            if cell.is_symbol() {
-                for i in -1..=1 {
-                    for j in -1..=1 {
-                        if i == 0 && j == 0 {
-                            continue;
-                        }
-
-                        let new_row = row as i32 + i;
-                        let new_col = col as i32 + j;
-
-                        if new_row < 0
-                            || new_row >= rows as i32
-                            || new_col < 0
-                            || new_col >= cols as i32
-                        {
-                            continue;
-                        }
-
-                        let neighbor = &grid[new_row as usize][new_col as usize];
-                        if neighbor.is_number() {
-                            let parsed = parse_number(&grid, neighbor);
-                            part_numbers.insert(parsed);
-                        }
-                    }
+    for (dx, dy) in directions {
+        let next_line = lines.get((row as isize + dy) as usize);
+        if let Some(line) = next_line {
+            let next_char = line.chars().nth((col as isize + dx) as usize);
+            if let Some(char) = next_char {
+                if char != '.' && !char.is_digit(10) {
+                    return Some(Part {
+                        symbol: char,
+                        position: format!("{}:{}", col as isize + dx, row as isize + dy),
+                        value: 0,
+                    });
                 }
             }
         }
     }
 
-    // Return the sum of all parts
-    Some(part_numbers.iter().sum())
+    None
 }
 
-/// Navigate horizontally left and right to figure out the start and end of a number cell.
-/// Return the parsed number.
-fn parse_number(grid: &Vec<Vec<Cell>>, cell: &Cell) -> u32 {
-    let mut start = cell.col;
-    let mut end = cell.col;
-
-    // Move left
-    while start > 0 {
-        start -= 1;
-
-        if grid[cell.row][start].is_period() || grid[cell.row][start].is_symbol() {
-            break;
-        }
-    }
-
-    // Move right
-    while end < grid[0].len() - 1 {
-        end += 1;
-
-        if grid[cell.row][end].is_period() || grid[cell.row][end].is_symbol() {
-            break;
-        }
-    }
-
-    let mut number = String::new();
-
-    for col in start..=end {
-        if grid[cell.row][col].is_number() {
-            number.push(
-                grid[cell.row][col]
-                    .value
-                    .to_string()
-                    .chars()
-                    .next()
-                    .unwrap(),
-            );
-        }
-    }
-
-    number.parse::<u32>().expect("Invalid number")
+pub fn part_one(input: &str) -> Option<u32> {
+    let lines: Vec<&str> = input.lines().collect();
+    let parts = parse_part_numbers(&lines);
+    Some(parts.iter().map(|p| p.value).sum())
 }
 
 pub fn part_two(input: &str) -> Option<u32> {
-    None
+    let lines: Vec<&str> = input.lines().collect();
+    let parts = parse_part_numbers(&lines);
+    let filtered_parts: Vec<&Part> = parts.iter().filter(|part| part.symbol == '*').collect();
+
+    let mut part_groups: HashMap<String, Vec<&Part>> = HashMap::new();
+
+    for part in filtered_parts {
+        part_groups
+            .entry(part.position.clone())
+            .or_insert_with(Vec::new)
+            .push(part);
+    }
+
+    let sum = part_groups
+        .values()
+        // Find gears, i.e. '*' symbols adjacent to exactly two numbers
+        .filter(|parts| parts.len() == 2)
+        // Find gear ratio by multiplying the values of each part
+        .map(|parts| parts[0].value * parts[1].value)
+        // Sum the gear ratios
+        .sum();
+
+    Some(sum)
 }
 
 advent_of_code::main!(3);
@@ -171,6 +110,6 @@ mod tests {
     #[test]
     fn test_part_two() {
         let result = part_two(&advent_of_code::template::read_file("examples", 3));
-        assert_eq!(result, None);
+        assert_eq!(result, Some(467835));
     }
 }
