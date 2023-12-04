@@ -1,3 +1,4 @@
+use rayon::prelude::*;
 use std::collections::{HashMap, VecDeque};
 
 #[derive(Debug, Eq, PartialEq, Hash)]
@@ -9,7 +10,7 @@ struct Card {
 impl Card {
     fn get_matches(&self) -> u32 {
         self.your_numbers
-            .iter()
+            .par_iter() // Use parallel iterator
             .filter(|&n| self.winning_numbers.contains(n))
             .count() as u32
     }
