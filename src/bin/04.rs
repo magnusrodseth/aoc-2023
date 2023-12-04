@@ -1,28 +1,21 @@
-#[derive(Debug)]
+use std::collections::{HashMap, VecDeque};
+
+#[derive(Debug, Eq, PartialEq, Hash)]
 struct Card {
     winning_numbers: Vec<u32>,
     your_numbers: Vec<u32>,
 }
 
 impl Card {
-    /// Winning numbers is the amount of numbers that are the same in both
-    /// your numbers and the winning numbers.
-    fn winning_numbers(&self) -> u32 {
-        let mut winning_numbers = 0;
-
-        for your_number in &self.your_numbers {
-            for winning_number in &self.winning_numbers {
-                if your_number == winning_number {
-                    winning_numbers += 1;
-                }
-            }
-        }
-
-        winning_numbers
+    fn get_matches(&self) -> u32 {
+        self.your_numbers
+            .iter()
+            .filter(|&n| self.winning_numbers.contains(n))
+            .count() as u32
     }
 
     fn get_points(&self) -> u32 {
-        let winning_numbers = self.winning_numbers();
+        let winning_numbers = self.get_matches();
 
         match winning_numbers {
             0 => 0,
@@ -74,7 +67,27 @@ pub fn part_one(input: &str) -> Option<u32> {
 }
 
 pub fn part_two(input: &str) -> Option<u32> {
-    None
+    let cards = Card::parse_cards(input);
+    let mut counts: HashMap<usize, u32> = HashMap::new();
+    let mut match_memo: HashMap<usize, usize> = HashMap::new();
+    let mut backlog: VecDeque<usize> = (0..cards.len()).collect();
+
+    while let Some(card_index) = backlog.pop_front() {
+        let matches = *match_memo
+            .entry(card_index)
+            .or_insert_with(|| cards[card_index].get_matches() as usize);
+
+        *counts.entry(card_index).or_insert(0) += 1;
+
+        for i in 1..=matches {
+            let next_card_index = card_index + i;
+            if next_card_index < cards.len() {
+                backlog.push_back(next_card_index);
+            }
+        }
+    }
+
+    Some(counts.values().sum())
 }
 
 advent_of_code::main!(4);
@@ -92,6 +105,6 @@ mod tests {
     #[test]
     fn test_part_two() {
         let result = part_two(&advent_of_code::template::read_file("examples", 4));
-        assert_eq!(result, None);
+        assert_eq!(result, Some(30));
     }
 }
