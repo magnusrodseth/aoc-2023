@@ -1,203 +1,232 @@
-use std::cmp;
-use std::collections::VecDeque;
+use itertools::Itertools;
+use std::cmp::{max, min};
 
-// Define types for readability and convenience
-type SeedRange = (usize, usize);
-type MapRange = (usize, usize, usize);
-type SeedInterval = (usize, usize);
-type MapInterval = (usize, usize, usize);
-
-// Function to convert a number according to the provided map
-fn convert(source_num: usize, map: &Vec<MapRange>) -> usize {
-    for (dest_start, src_start, len) in map {
-        if *src_start <= source_num && source_num < src_start + len {
-            return (source_num - src_start) + dest_start;
-        }
-    }
-    source_num
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
+struct Entry {
+    source_start: usize,
+    source_end: usize,
+    target_start: usize,
+    length: usize,
 }
-
-// Function to find the intersection of a seed interval and a map interval
-fn intersect(seed: &SeedInterval, map: &MapInterval) -> Option<SeedInterval> {
-    if seed.1 <= map.1 || seed.0 >= map.2 {
-        None
-    } else {
-        let max_start = cmp::max(seed.0, map.1);
-        let min_end = cmp::min(seed.1, map.2);
-        Some((max_start, min_end))
+trait Includes {
+    fn includes(&self, seed: usize) -> bool;
+}
+impl Includes for Entry {
+    /// Returns true if the given seed is included in the source range of this entry.
+    fn includes(&self, seed: usize) -> bool {
+        seed >= self.source_start && seed < self.source_end
     }
 }
 
-// Function to convert a seed interval based on a given map
-fn convert_2(seed: &SeedInterval, sorted_map: &Vec<MapInterval>) -> Vec<SeedInterval> {
-    let mut seeds = VecDeque::from([seed.to_owned()]);
-    let mut dests = Vec::new();
-
-    while let Some(src) = seeds.pop_front() {
-        let mut intersected = false;
-
-        for map_interval in sorted_map {
-            if let Some(intersection) = intersect(&src, map_interval) {
-                if src.0 < intersection.0 {
-                    seeds.push_back((src.0, intersection.0 - 1));
-                }
-                if intersection.1 < src.1 {
-                    seeds.push_back((intersection.1, src.1));
-                }
-                dests.push((
-                    map_interval.0 + (intersection.0 - map_interval.1),
-                    map_interval.0 + (intersection.1 - map_interval.1),
-                ));
-                intersected = true;
-                break;
-            }
-        }
-        if !intersected {
-            dests.push(src);
-        }
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+struct SeedRange {
+    start: usize,
+    length: usize,
+}
+impl Includes for SeedRange {
+    /// Returns true if the given seed is included in this seed range.
+    fn includes(&self, seed: usize) -> bool {
+        seed >= self.start && seed < self.start + self.length
     }
-
-    dests
 }
 
-// Parse each line of the map
-fn parse_map_line(line: &str) -> MapRange {
-    let nums: Vec<usize> = line
-        .split_whitespace()
-        .map(|w| w.parse::<usize>().expect("Map range should be a number"))
-        .collect();
-
-    // Ensure there are exactly three numbers in the line
-    if nums.len() != 3 {
-        panic!("Each map line should contain exactly three numbers");
-    }
-
-    (nums[0], nums[1], nums[2])
-}
-
-// Parse the seed numbers
-fn parse_seeds(line: &str) -> Vec<usize> {
+fn parse_seeds(line: &String) -> Vec<usize> {
     line.split(": ")
-        .nth(1)
-        .expect("Format should be 'seeds: n1 n2 ...'")
-        .split_whitespace()
-        .map(|w| w.parse().expect("Seed should be a number"))
-        .collect()
+        .last()
+        .unwrap()
+        .split(" ")
+        .map(|s| s.parse::<usize>().expect("to be on format '79 14 55 13'"))
+        .collect_vec()
 }
 
-// Parse the seed ranges
-fn parse_seeds_2(line: &str) -> Vec<SeedInterval> {
+fn parse_seed_ranges(line: &String) -> Vec<SeedRange> {
     line.split(": ")
-        .nth(1)
-        .expect("Format should be 'seeds: n1 n2 ...'")
-        .split_whitespace()
-        .map(|w| w.parse().expect("Seed range should be a number"))
-        .collect::<Vec<_>>()
+        .last()
+        .unwrap()
+        .split(" ")
         .chunks(2)
-        .map(|chunk| (chunk[0], chunk[0] + chunk[1]))
-        .collect()
-}
-
-// Parse the input to get seeds and maps
-fn parse(input: &str) -> (Vec<usize>, Vec<Vec<MapRange>>) {
-    let lines: Vec<_> = input.lines().collect();
-    let seeds = parse_seeds(lines[0]);
-    let mut maps = Vec::new();
-
-    let mut current_map = Vec::new();
-    for line in lines.iter().skip(1) {
-        if line.is_empty() {
-            continue;
-        }
-
-        if line.contains("map") {
-            if !current_map.is_empty() {
-                maps.push(current_map);
-                current_map = Vec::new();
+        .into_iter()
+        .map(|c| {
+            let parts = c.collect_vec();
+            SeedRange {
+                start: parts[0].parse::<usize>().expect("invalid number"),
+                length: parts[1].parse::<usize>().expect("invalid number"),
             }
-        } else {
-            current_map.push(parse_map_line(line));
-        }
-    }
-
-    if !current_map.is_empty() {
-        maps.push(current_map);
-    }
-
-    (seeds, maps)
+        })
+        .collect_vec()
 }
 
-// Same as `parse` but for the second part
-fn parse_2(input: &str) -> (Vec<SeedInterval>, Vec<Vec<MapInterval>>) {
-    let lines: Vec<_> = input.lines().collect();
-    let seeds = parse_seeds_2(lines[0]);
+fn parse_entries(lines: &Vec<String>) -> Vec<Vec<Entry>> {
+    lines
+        .split(|l| l.is_empty())
+        .map(|chunk| {
+            chunk
+                .into_iter()
+                // Skip the first line, which is the 'seeds: ' line
+                .skip(1)
+                .map(|l| {
+                    let parts = l.split(" ").collect::<Vec<&str>>();
 
-    let mut maps = Vec::new();
-    let mut current_map = Vec::new();
-    for line in lines.iter().skip(1) {
-        if line.is_empty() {
-            continue;
-        }
+                    Entry {
+                        source_start: parts[1].parse::<usize>().unwrap(),
+                        source_end: parts[1].parse::<usize>().unwrap()
+                            + parts[2].parse::<usize>().unwrap(),
+                        target_start: parts[0].parse::<usize>().unwrap(),
+                        length: parts[2].parse::<usize>().unwrap(),
+                    }
+                })
+                .sorted()
+                .collect_vec()
+        })
+        .collect_vec()
+}
 
-        if line.contains("map") {
-            if !current_map.is_empty() {
-                maps.push(current_map);
-                current_map = Vec::new();
+trait MergeRanges {
+    fn merge_ranges(&self) -> Vec<SeedRange>;
+}
+impl MergeRanges for Vec<SeedRange> {
+    /// Merges overlapping ranges into a new vector of ranges.
+    fn merge_ranges(&self) -> Vec<SeedRange> {
+        let mut merged = vec![];
+        let mut current = self[0].clone();
+        self.iter().for_each(|range| {
+            if current.includes(range.start) {
+                current.length = max(current.length, range.length + range.start - current.start);
+            } else if range.start == current.start + current.length {
+                current.length += range.length;
+            } else {
+                merged.push(current.clone());
+                current = range.clone();
             }
-        } else {
-            let parsed_line = parse_map_line(line);
-            current_map.push((parsed_line.0, parsed_line.1, parsed_line.1 + parsed_line.2));
+        });
+        merged.push(current);
+
+        merged
+    }
+}
+
+trait EntryMapping {
+    fn map_seed(&self, seed: &usize) -> usize;
+    fn map_seed_range(&self, seed_range: &SeedRange) -> Vec<SeedRange>;
+}
+impl EntryMapping for Vec<Entry> {
+    fn map_seed(&self, seed: &usize) -> usize {
+        match self.binary_search_by(|entry| entry.source_start.cmp(seed)) {
+            Ok(index) => self[index].target_start,
+            Err(index) => {
+                if index == 0 || self[index - 1].source_end <= *seed {
+                    *seed
+                } else {
+                    self[index - 1].target_start + seed - self[index - 1].source_start
+                }
+            }
         }
     }
 
-    if !current_map.is_empty() {
-        maps.push(current_map);
+    fn map_seed_range(&self, seed_range: &SeedRange) -> Vec<SeedRange> {
+        let mut new_ranges = vec![];
+        let mut new_start = seed_range.start;
+        let mut remaining_length = seed_range.length;
+        let mut entry_index =
+            match self.binary_search_by(|entry| entry.source_start.cmp(&seed_range.start)) {
+                Ok(i) => i,
+                Err(i) => i,
+            };
+
+        let before_any_entry = Entry {
+            source_start: 0,
+            source_end: 0,
+            target_start: 0,
+            length: 0,
+        };
+
+        let after_any_entry = Entry {
+            source_start: usize::MAX,
+            source_end: usize::MAX,
+            target_start: usize::MAX,
+            length: 0,
+        };
+
+        while remaining_length > 0 {
+            let previous = if entry_index > 0 {
+                &self[entry_index - 1]
+            } else {
+                &before_any_entry
+            };
+
+            let next = if entry_index < self.len() {
+                &self[entry_index]
+            } else {
+                &after_any_entry
+            };
+
+            if previous.includes(new_start) {
+                new_ranges.push(SeedRange {
+                    start: previous.target_start + new_start - previous.source_start,
+                    length: min(remaining_length, previous.source_end - new_start),
+                });
+                remaining_length -= min(remaining_length, previous.source_end - new_start);
+                new_start = previous.source_end;
+            }
+
+            new_ranges.push(SeedRange {
+                start: new_start,
+                length: min(remaining_length, next.source_start - new_start),
+            });
+            remaining_length -= min(remaining_length, next.source_start - new_start);
+            new_start = next.source_start;
+
+            entry_index += 1;
+        }
+        new_ranges
     }
-
-    (seeds, maps)
-}
-
-// Function to sort map ranges
-fn sort_range(a: &MapRange, b: &MapRange) -> cmp::Ordering {
-    a.1.cmp(&b.1)
 }
 
 pub fn part_one(input: &str) -> Option<u32> {
-    let (seeds, maps) = parse(input);
+    let lines = input.lines().map(|l| l.to_string()).collect_vec();
+    let seeds = parse_seeds(&lines[0]);
+    let entries = parse_entries(&lines[2..].to_vec());
 
-    let min_loc = seeds
-        .into_iter()
-        .map(|seed| {
-            maps.iter()
-                .fold(seed, |prev_loc, map| convert(prev_loc, map))
+    let result = entries
+        .iter()
+        .fold(seeds, |seeds, mapping| {
+            seeds
+                .into_iter()
+                .map(|seed| mapping.map_seed(&seed))
+                .collect_vec()
         })
+        .into_iter()
         .min()
-        .unwrap_or(usize::MAX);
+        .expect("no seeds") as u32;
 
-    Some(min_loc as u32)
+    Some(result)
 }
 
 pub fn part_two(input: &str) -> Option<u32> {
-    let (seeds, mut maps) = parse_2(input);
+    let lines = input.lines().map(|l| l.to_string()).collect_vec();
+    let seed_ranges = parse_seed_ranges(&lines[0]);
+    let entries = parse_entries(&lines[2..].to_vec());
 
-    for map in maps.iter_mut() {
-        map.sort_by(sort_range);
-    }
-
-    let src_intervals = seeds;
-    let result = maps
-        .into_iter()
-        .fold(src_intervals, |src_intervals, map| {
-            src_intervals
-                .into_iter()
-                .flat_map(|seed_interval| convert_2(&seed_interval, &map))
-                .collect()
-        })
-        .into_iter()
-        .min_by_key(|i| i.0)
-        .unwrap_or_default();
-
-    Some(result.0 as u32)
+    Some(
+        entries
+            .iter()
+            .fold(seed_ranges, |ranges, mapping| {
+                ranges
+                    .iter()
+                    // Map each seed range to a vector of seed ranges
+                    .flat_map(|seed_range| mapping.map_seed_range(seed_range))
+                    // Filter out empty seed ranges
+                    .filter(|range| range.length > 0)
+                    .sorted()
+                    .collect_vec()
+                    // Merge overlapping seed ranges
+                    .merge_ranges()
+            })
+            .into_iter()
+            .min()
+            .unwrap()
+            .start as u32,
+    )
 }
 
 advent_of_code::main!(5);
