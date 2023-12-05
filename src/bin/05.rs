@@ -1,171 +1,203 @@
-#[derive(Debug)]
-struct EntryData {
-    source_range_start: u32,
-    destination_range_start: u32,
-    range_length: u32,
+use std::cmp;
+use std::collections::VecDeque;
+
+// Define types for readability and convenience
+type SeedRange = (usize, usize);
+type MapRange = (usize, usize, usize);
+type SeedInterval = (usize, usize);
+type MapInterval = (usize, usize, usize);
+
+// Function to convert a number according to the provided map
+fn convert(source_num: usize, map: &Vec<MapRange>) -> usize {
+    for (dest_start, src_start, len) in map {
+        if *src_start <= source_num && source_num < src_start + len {
+            return (source_num - src_start) + dest_start;
+        }
+    }
+    source_num
 }
 
-fn parse_entries(input: &str) -> Vec<Vec<EntryData>> {
-    let lines = input
-        .lines()
-        // Remove the two first lines, for seeds
-        .skip(2)
-        .collect::<Vec<&str>>();
+// Function to find the intersection of a seed interval and a map interval
+fn intersect(seed: &SeedInterval, map: &MapInterval) -> Option<SeedInterval> {
+    if seed.1 <= map.1 || seed.0 >= map.2 {
+        None
+    } else {
+        let max_start = cmp::max(seed.0, map.1);
+        let min_end = cmp::min(seed.1, map.2);
+        Some((max_start, min_end))
+    }
+}
 
-    let mut entries: Vec<Vec<EntryData>> = Vec::new();
-    let mut current_entry_data: Vec<EntryData> = Vec::new();
+// Function to convert a seed interval based on a given map
+fn convert_2(seed: &SeedInterval, sorted_map: &Vec<MapInterval>) -> Vec<SeedInterval> {
+    let mut seeds = VecDeque::from([seed.to_owned()]);
+    let mut dests = Vec::new();
 
-    for line in &lines {
-        if line.is_empty() {
-            if !current_entry_data.is_empty() {
-                entries.push(current_entry_data);
-                current_entry_data = Vec::new();
+    while let Some(src) = seeds.pop_front() {
+        let mut intersected = false;
+
+        for map_interval in sorted_map {
+            if let Some(intersection) = intersect(&src, map_interval) {
+                if src.0 < intersection.0 {
+                    seeds.push_back((src.0, intersection.0 - 1));
+                }
+                if intersection.1 < src.1 {
+                    seeds.push_back((intersection.1, src.1));
+                }
+                dests.push((
+                    map_interval.0 + (intersection.0 - map_interval.1),
+                    map_interval.0 + (intersection.1 - map_interval.1),
+                ));
+                intersected = true;
+                break;
             }
+        }
+        if !intersected {
+            dests.push(src);
+        }
+    }
+
+    dests
+}
+
+// Parse each line of the map
+fn parse_map_line(line: &str) -> MapRange {
+    let nums: Vec<usize> = line
+        .split_whitespace()
+        .map(|w| w.parse::<usize>().expect("Map range should be a number"))
+        .collect();
+
+    // Ensure there are exactly three numbers in the line
+    if nums.len() != 3 {
+        panic!("Each map line should contain exactly three numbers");
+    }
+
+    (nums[0], nums[1], nums[2])
+}
+
+// Parse the seed numbers
+fn parse_seeds(line: &str) -> Vec<usize> {
+    line.split(": ")
+        .nth(1)
+        .expect("Format should be 'seeds: n1 n2 ...'")
+        .split_whitespace()
+        .map(|w| w.parse().expect("Seed should be a number"))
+        .collect()
+}
+
+// Parse the seed ranges
+fn parse_seeds_2(line: &str) -> Vec<SeedInterval> {
+    line.split(": ")
+        .nth(1)
+        .expect("Format should be 'seeds: n1 n2 ...'")
+        .split_whitespace()
+        .map(|w| w.parse().expect("Seed range should be a number"))
+        .collect::<Vec<_>>()
+        .chunks(2)
+        .map(|chunk| (chunk[0], chunk[0] + chunk[1]))
+        .collect()
+}
+
+// Parse the input to get seeds and maps
+fn parse(input: &str) -> (Vec<usize>, Vec<Vec<MapRange>>) {
+    let lines: Vec<_> = input.lines().collect();
+    let seeds = parse_seeds(lines[0]);
+    let mut maps = Vec::new();
+
+    let mut current_map = Vec::new();
+    for line in lines.iter().skip(1) {
+        if line.is_empty() {
             continue;
         }
 
-        if line.ends_with("map:") {
-            if !current_entry_data.is_empty() {
-                entries.push(current_entry_data);
+        if line.contains("map") {
+            if !current_map.is_empty() {
+                maps.push(current_map);
+                current_map = Vec::new();
             }
-            current_entry_data = Vec::new();
         } else {
-            let numbers: Vec<u32> = line
-                .split_whitespace()
-                .map(|num| num.parse().unwrap())
-                .collect();
-
-            let data = EntryData {
-                source_range_start: numbers[1],
-                destination_range_start: numbers[0],
-                range_length: numbers[2],
-            };
-
-            current_entry_data.push(data);
+            current_map.push(parse_map_line(line));
         }
     }
 
-    if !current_entry_data.is_empty() {
-        entries.push(current_entry_data);
+    if !current_map.is_empty() {
+        maps.push(current_map);
     }
 
-    entries
+    (seeds, maps)
 }
 
-fn convert_number(number: u32, entry: &[EntryData]) -> u32 {
-    for entry in entry {
-        let is_within_range = (number >= entry.source_range_start)
-            && (number < entry.source_range_start + entry.range_length);
+// Same as `parse` but for the second part
+fn parse_2(input: &str) -> (Vec<SeedInterval>, Vec<Vec<MapInterval>>) {
+    let lines: Vec<_> = input.lines().collect();
+    let seeds = parse_seeds_2(lines[0]);
 
-        if is_within_range {
-            return entry.destination_range_start + (number - entry.source_range_start);
+    let mut maps = Vec::new();
+    let mut current_map = Vec::new();
+    for line in lines.iter().skip(1) {
+        if line.is_empty() {
+            continue;
+        }
+
+        if line.contains("map") {
+            if !current_map.is_empty() {
+                maps.push(current_map);
+                current_map = Vec::new();
+            }
+        } else {
+            let parsed_line = parse_map_line(line);
+            current_map.push((parsed_line.0, parsed_line.1, parsed_line.1 + parsed_line.2));
         }
     }
 
-    number
+    if !current_map.is_empty() {
+        maps.push(current_map);
+    }
+
+    (seeds, maps)
+}
+
+// Function to sort map ranges
+fn sort_range(a: &MapRange, b: &MapRange) -> cmp::Ordering {
+    a.1.cmp(&b.1)
 }
 
 pub fn part_one(input: &str) -> Option<u32> {
-    // Find seeds to be planted
-    let seeds_to_plant = input
-        .lines()
-        .nth(0)
-        .expect("should have one line")
-        .split("seeds: ")
-        .nth(1)
-        .expect("should have seeds")
-        .split(" ")
-        .map(|s| s.parse::<u32>().expect("should be a number"))
-        .collect::<Vec<u32>>();
+    let (seeds, maps) = parse(input);
 
-    let entries = parse_entries(input);
+    let min_loc = seeds
+        .into_iter()
+        .map(|seed| {
+            maps.iter()
+                .fold(seed, |prev_loc, map| convert(prev_loc, map))
+        })
+        .min()
+        .unwrap_or(usize::MAX);
 
-    let mut lowest_location = u32::MAX;
-
-    for seed in seeds_to_plant {
-        let mut next_number = seed;
-
-        // Convert the seed number through each map
-        for entry in &entries {
-            next_number = convert_number(next_number, entry);
-        }
-
-        // Track the lowest location number
-        if next_number < lowest_location {
-            lowest_location = next_number;
-        }
-    }
-
-    if lowest_location == u32::MAX {
-        return None;
-    }
-
-    Some(lowest_location)
-}
-
-#[derive(Debug)]
-struct SeedRange {
-    source: u32,
-    range_length: u32,
+    Some(min_loc as u32)
 }
 
 pub fn part_two(input: &str) -> Option<u32> {
-    // Find range of seeds to be planted
-    let seeds_to_plant = input
-        .lines()
-        .nth(0)
-        .expect("should have one line")
-        .split("seeds: ")
-        .nth(1)
-        .expect("should have seeds")
-        .split(" ")
-        .collect::<Vec<&str>>()
-        // Convert "79 14 55 13" to chunks of two, i.e. ["79", "14"], ["55", "13"] etc.
-        .chunks(2)
-        .map(|chunk| SeedRange {
-            source: chunk[0].parse::<u32>().expect("should be a number"),
-            range_length: chunk[1].parse::<u32>().expect("should be a number"),
-        })
-        .collect::<Vec<SeedRange>>()
-        // Map the seed range to the range of numbers that will be planted
-        .iter()
-        .map(|seed_range| {
-            let mut range = Vec::new();
-            for i in 0..seed_range.range_length {
-                range.push(seed_range.source + i);
-            }
-            range
-        })
-        .collect::<Vec<Vec<u32>>>()
-        // Flatten the list of ranges into a single list of numbers
-        .iter()
-        .flatten()
-        .map(|&num| num)
-        .collect::<Vec<u32>>();
+    let (seeds, mut maps) = parse_2(input);
 
-    let entries = parse_entries(input);
-
-    let mut lowest_location = u32::MAX;
-
-    for seed in seeds_to_plant {
-        let mut next_number = seed;
-
-        // Convert the seed number through each map
-        for entry in &entries {
-            next_number = convert_number(next_number, entry);
-        }
-
-        // Track the lowest location number
-        if next_number < lowest_location {
-            lowest_location = next_number;
-        }
+    for map in maps.iter_mut() {
+        map.sort_by(sort_range);
     }
 
-    if lowest_location == u32::MAX {
-        return None;
-    }
+    let src_intervals = seeds;
+    let result = maps
+        .into_iter()
+        .fold(src_intervals, |src_intervals, map| {
+            src_intervals
+                .into_iter()
+                .flat_map(|seed_interval| convert_2(&seed_interval, &map))
+                .collect()
+        })
+        .into_iter()
+        .min_by_key(|i| i.0)
+        .unwrap_or_default();
 
-    Some(lowest_location)
+    Some(result.0 as u32)
 }
 
 advent_of_code::main!(5);
