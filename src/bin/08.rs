@@ -1,10 +1,8 @@
-use std::collections::{HashMap, HashSet};
+use num::integer::lcm as lowest_common_multiple;
+use std::collections::HashMap;
 
 const START_LABEL: &str = "AAA";
 const END_LABEL: &str = "ZZZ";
-
-type Label = String;
-type LeftRight = (Label, Label);
 
 #[derive(Debug)]
 enum Direction {
@@ -25,130 +23,81 @@ impl Direction {
     }
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
-struct Node {
-    label: Label,
-    left: Option<Box<Node>>,
-    right: Option<Box<Node>>,
-}
+type Label = String;
+type LeftRight = (Label, Label);
 
-fn all_labels_end_with_z(labels: &HashSet<String>, nodes: &HashMap<String, Node>) -> bool {
-    labels.iter().all(|label| {
-        nodes
-            .get(label)
-            .map_or(false, |node| node.label.ends_with("Z"))
-    })
-}
-
-fn create_graph(input: &str) -> HashMap<Label, Node> {
-    let mut nodes_map: HashMap<String, LeftRight> = HashMap::new();
-    input.lines().skip(2).for_each(|line| {
-        let parts = line.split(" = ").collect::<Vec<&str>>();
-        let label = parts[0].to_string();
-        let (left_label, right_label) = parts[1]
-            .trim_matches(|c| c == '(' || c == ')')
-            .split_once(", ")
-            .unwrap();
-
-        nodes_map.insert(label, (left_label.to_string(), right_label.to_string()));
-    });
-
-    let mut nodes: HashMap<Label, Node> = HashMap::new();
-    for (label, _) in nodes_map.iter() {
-        nodes.insert(
-            label.clone(),
-            Node {
-                label: label.clone(),
-                left: None,
-                right: None,
-            },
-        );
-    }
-
-    // Second pass to set connections
-    for (label, (left_label, right_label)) in nodes_map.iter() {
-        let left_node = nodes.get(left_label).map(|n| Box::new(n.clone()));
-        let right_node = nodes.get(right_label).map(|n| Box::new(n.clone()));
-
-        if let Some(node) = nodes.get_mut(label) {
-            node.left = left_node;
-            node.right = right_node;
-        }
-    }
-
-    nodes
+fn create_graph(input: &str) -> HashMap<Label, LeftRight> {
+    input
+        .lines()
+        .skip(2)
+        .map(|line| {
+            let parts = line.split(" = ").collect::<Vec<&str>>();
+            let label = parts[0].to_string();
+            let (left_label, right_label) = parts[1]
+                .trim_matches(|c| c == '(' || c == ')')
+                .split_once(", ")
+                .unwrap();
+            (label, (left_label.to_string(), right_label.to_string()))
+        })
+        .collect()
 }
 
 pub fn part_one(input: &str) -> Option<u32> {
     let directions =
         Direction::parse_directions(input.lines().nth(0).expect("should have first line"));
 
-    let nodes = create_graph(input);
+    let graph = create_graph(input);
 
-    let mut current_node = nodes
-        .get(START_LABEL)
-        .expect("should have start node")
-        .clone();
-
+    let mut current_label = START_LABEL.to_string();
     let mut steps: u32 = 0;
-    let mut index = 0;
 
-    while current_node.label != END_LABEL {
-        let direction = &directions[index % directions.len()];
+    while current_label != END_LABEL {
+        let direction = &directions[steps as usize % directions.len()];
 
-        let next_label = match direction {
-            Direction::Left => current_node.left.as_ref().map(|n| n.label.clone()),
-            Direction::Right => current_node.right.as_ref().map(|n| n.label.clone()),
+        current_label = match direction {
+            Direction::Left => graph.get(&current_label).unwrap().0.clone(),
+            Direction::Right => graph.get(&current_label).unwrap().1.clone(),
         };
 
-        current_node = nodes
-            .get(&next_label.expect("should have next label"))
-            .expect("should have next node")
-            .clone();
-
         steps += 1;
-        index += 1;
     }
 
     Some(steps)
 }
 
-pub fn part_two(input: &str) -> Option<u32> {
+fn part_two(input: &str) -> Option<u32> {
     let directions =
         Direction::parse_directions(input.lines().nth(0).expect("should have first line"));
 
-    let nodes = create_graph(input);
+    let graph = create_graph(input);
 
-    let starting_labels = nodes
+    // Collect all starting nodes (nodes ending with 'A')
+    let start_nodes = graph
+        .keys()
+        .filter(|&k| k.ends_with('A'))
+        .collect::<Vec<&String>>();
+
+    // Calculate the LCM of steps for each starting node
+    let result_lcm = start_nodes
         .iter()
-        .filter(|(_, node)| node.label.ends_with('A'))
-        .map(|(_, node)| node.label.clone())
-        .collect::<HashSet<String>>();
+        .map(|&start_node| {
+            let mut current_label = start_node;
+            let mut steps: usize = 0;
 
-    let mut visited_labels = starting_labels;
-    let mut steps: usize = 0;
-
-    while !all_labels_end_with_z(&visited_labels, &nodes) {
-        let mut next_visited_labels = HashSet::new();
-        let direction = &directions[steps % directions.len()];
-
-        for label in visited_labels.iter() {
-            let node = nodes.get(label).expect("Node must exist for label");
-            let next_label = match direction {
-                Direction::Left => node.left.as_ref().map(|n| n.label.clone()),
-                Direction::Right => node.right.as_ref().map(|n| n.label.clone()),
-            };
-
-            if let Some(label) = next_label {
-                next_visited_labels.insert(label);
+            while !current_label.ends_with('Z') {
+                let direction = &directions[steps % directions.len()];
+                current_label = match direction {
+                    Direction::Left => &graph.get(current_label).unwrap().0,
+                    Direction::Right => &graph.get(current_label).unwrap().1,
+                };
+                steps += 1;
             }
-        }
 
-        visited_labels = next_visited_labels;
-        steps += 1;
-    }
+            steps as u64
+        })
+        .fold(1, lowest_common_multiple);
 
-    Some(steps as u32)
+    Some(result_lcm as u32)
 }
 
 advent_of_code::main!(8);
