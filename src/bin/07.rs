@@ -57,7 +57,17 @@ impl Display for Hand {
             })
             .collect::<String>();
 
-        write!(f, "{}", cards)
+        let card_type = match self.hand_type_with_jokers() {
+            HandType::HighCard => "High Card",
+            HandType::OnePair => "One Pair",
+            HandType::TwoPair => "Two Pair",
+            HandType::ThreeOfAKind => "Three of a Kind",
+            HandType::FullHouse => "Full House",
+            HandType::FourOfAKind => "Four of a Kind",
+            HandType::FiveOfAKind => "Five of a Kind",
+        };
+
+        write!(f, "{} ({})", cards, card_type)
     }
 }
 
@@ -246,9 +256,9 @@ pub fn part_two(input: &str) -> Option<u32> {
 
     hands.sort_by(|a, b| a.compare_with_jokers(b));
 
-    // for hand in hands.iter() {
-    //     println!("{}", hand);
-    // }
+    for hand in hands.iter() {
+        println!("{}", hand);
+    }
 
     let total_winnings = hands
         .iter()
